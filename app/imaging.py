@@ -161,19 +161,43 @@ def make_page_background(
     mask = np.zeros((h, w), np.uint8)
     cv2.fillPoly(mask, [hole], 255)
 
-    # 背景是低频内容：1/16 分辨率 inpaint + 强模糊。分辨率高了 Telea 会沿
-    # 等照度线扩散出 X 形方向性条纹；低分辨率 + 模糊得到平滑渐变填充
+    # 逐列线性插值填洞（1/16 分辨率）：扫描背景的结构是纵向条纹（扫描头
+    # 纵向走），用洞上/下方的真实像素按列插值，竖向明暗带能自然穿过洞延续。
+    # 扩散式 inpaint（Telea）会把洞边界的暗带横向漫进填充区，形成灰色云斑
     small = cv2.resize(bgr, (w // 16, h // 16), interpolation=cv2.INTER_AREA)
     small_mask = cv2.resize(mask, (w // 16, h // 16), interpolation=cv2.INTER_NEAREST)
     small_mask = cv2.dilate(small_mask, np.ones((3, 3), np.uint8))  # 盖住降采样边缘混色
-    filled = cv2.inpaint(small, small_mask, 4, cv2.INPAINT_TELEA)
-    filled = cv2.GaussianBlur(filled, (9, 9), 0)
+    filled = _fill_columns(small, small_mask)
+    filled = cv2.GaussianBlur(filled, (5, 5), 0)
     filled_up = cv2.resize(filled, (w, h), interpolation=cv2.INTER_LINEAR)
 
     # 羽化过渡：抹除区边界不留硬缝
     alpha = (cv2.GaussianBlur(mask, (31, 31), 0).astype(np.float32) / 255)[..., None]
     out = (bgr.astype(np.float32) * (1 - alpha) + filled_up.astype(np.float32) * alpha)
     return _fit_to(out.astype(np.uint8), *size)
+
+
+def _fill_columns(img: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    """把 mask 区域按列用上/下边界像素线性插值填充（矩形洞每列连续）。"""
+    h, w = mask.shape
+    out = img.astype(np.float32)
+    for x in range(w):
+        ys = np.nonzero(mask[:, x])[0]
+        if ys.size == 0:
+            continue
+        y0, y1 = int(ys.min()), int(ys.max())
+        has_top, has_bottom = y0 > 0, y1 + 1 < h
+        if has_top and has_bottom:
+            top, bottom = out[y0 - 1, x], out[y1 + 1, x]
+        elif has_top:
+            top = bottom = out[y0 - 1, x]
+        elif has_bottom:
+            top = bottom = out[y1 + 1, x]
+        else:  # 整列都是洞：用行方向邻居兜底
+            continue
+        t = np.linspace(0.0, 1.0, y1 - y0 + 1)[:, None]
+        out[y0 : y1 + 1, x] = top * (1 - t) + bottom * t
+    return out.astype(np.uint8)
 
 
 def _fit_to(img: np.ndarray, target_w: int, target_h: int) -> np.ndarray:

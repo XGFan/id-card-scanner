@@ -107,6 +107,24 @@ def test_page_background_removes_card_and_fits_a4():
     assert patch.mean() > BG - 15
 
 
+def test_page_background_continues_vertical_band_through_hole():
+    # 回归：卡片贴着纵向暗带时，填充必须让暗带竖向延续，
+    # 而不是把暗色横向漫成云斑（Telea 扩散的问题）
+    img = _platen(BG)
+    img[:, 500:700] = 150  # 纵向暗带
+    _draw_card(img, (900, 1600), 0, (30, 30, 30))  # 卡片左缘压住暗带右侧
+    result = detect_card(img, DPI)
+    assert result.detected
+    bg = make_page_background(img, result.quad, DPI, (2480, 3508))
+    shift = (2550 - 2480) // 2  # 居中裁剪的 x 偏移
+    # 暗带列在原卡片高度处仍应是暗带色（穿过洞延续）
+    band = bg[1550:1650, 560 - shift : 640 - shift]
+    assert abs(band.mean() - 150) < 25
+    # 洞内远离暗带的列应是亮背景，不能被暗色污染
+    bright = bg[1550:1650, 900 - shift : 1100 - shift]
+    assert bright.mean() > BG - 25
+
+
 def test_ignores_object_larger_than_a5():
     # 大于 A5 上限的整页文档不该被当成证件
     img = _platen(BG)
