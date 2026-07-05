@@ -130,17 +130,17 @@ def _process(raw_jpeg: bytes) -> tuple[bytes, bool, tuple[int, int, int], bytes]
 
 
 def _make_preview(bgr: np.ndarray, quad: np.ndarray | None) -> bytes:
-    """原始扫描图的框选预览：降采样 + 检测框外压暗 + 绿色边界框。"""
+    """原始扫描图的框选预览：降采样 + 绿色边界框。
+
+    不压暗框外区域：预览必须呈现真实的扫描背景色，否则用户会拿被压暗的
+    预览当参照，误以为复印件页的底色「变白了」（2026-07-05 实际发生过）。
+    """
     scale = PREVIEW_W / bgr.shape[1]
     small = cv2.resize(
         bgr, (PREVIEW_W, round(bgr.shape[0] * scale)), interpolation=cv2.INTER_AREA
     )
     if quad is not None:
         pts = (quad * scale).astype(np.int32)
-        mask = np.zeros(small.shape[:2], np.uint8)
-        cv2.fillPoly(mask, [pts], 255)
-        dimmed = (small * 0.5).astype(np.uint8)
-        small = np.where(mask[..., None] == 255, small, dimmed)
         cv2.polylines(small, [pts], True, _BOX_COLOR, 4, cv2.LINE_AA)
     ok, buf = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, 85])
     if not ok:
