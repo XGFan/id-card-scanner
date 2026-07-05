@@ -6,7 +6,7 @@ from app.imaging import detect_card, make_page_background
 DPI = 300
 # 身份证 85.6×54mm @300dpi ≈ 1012×638px
 CARD_W, CARD_H = 1012, 638
-EXPAND = round(2 * 3.0 / 25.4 * DPI)  # 裁剪每边向外扩 3mm 余量，两边共 ≈71px
+EXPAND = round(2 * 12.0 / 25.4 * DPI)  # 裁剪每边向外扩 12mm 余量，两边共 ≈283px
 BG = 242
 
 

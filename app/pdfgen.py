@@ -14,11 +14,13 @@ import io
 import numpy as np
 from PIL import Image
 
+from .imaging import MARGIN_MM
+
 CANVAS_DPI = 300
 A4_W = 2480  # 210mm @300dpi
 A4_H = 3508  # 297mm @300dpi
 MARGIN = 59  # 约 5mm 安全边距
-FEATHER = 18  # 贴图边缘羽化宽度（约 1.5mm）：色调残差不露接缝，且不侵入证件本体
+FEATHER = 60  # 贴图边缘羽化宽度（约 5mm）：在 12mm 余量的外侧平坦区完成过渡
 WHITE = (255, 255, 255)
 
 
@@ -74,6 +76,15 @@ def _place(
             Image.LANCZOS,
         )
     fit_w, fit_h = A4_W - 2 * MARGIN, half_h - 2 * MARGIN
+    if img.width > fit_w or img.height > fit_h:
+        # 超出半页时先裁掉裁剪余量保 1:1（余量是环境装饰，证件尺寸才是硬指标）
+        trim = round(2 * MARGIN_MM / 25.4 * CANVAS_DPI)
+        crop_w = min(img.width, max(fit_w, img.width - trim))
+        crop_h = min(img.height, max(fit_h, img.height - trim))
+        if (crop_w, crop_h) != (img.width, img.height):
+            x0 = (img.width - crop_w) // 2
+            y0 = (img.height - crop_h) // 2
+            img = img.crop((x0, y0, x0 + crop_w, y0 + crop_h))
     if img.height > fit_h and img.height <= fit_w and img.width <= fit_h:
         # 竖放放不下但横放能 1:1 放下 → 旋转，保住真实尺寸
         img = img.rotate(90, expand=True, fillcolor=bg_color)
