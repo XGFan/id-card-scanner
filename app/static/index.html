@@ -18,7 +18,7 @@
   }
   main {
     display: grid;
-    grid-template-columns: clamp(360px, 30vw, 560px) 1fr;
+    grid-template-columns: clamp(340px, 26vw, 480px) 1fr;
     gap: 20px;
     height: 100dvh;
     padding: 20px;
@@ -32,7 +32,7 @@
   #dev-dot { font-size: .7rem; }
   #dev-dot.ok { color: #34c759; }
   #dev-dot.bad { color: #d70015; }
-  #hint { margin: 0; color: light-dark(#6e6e73, #98989d); min-height: 1.4em; font-size: .95rem; }
+  #hint { margin: 0; color: light-dark(#6e6e73, #98989d); min-height: 2.8em; font-size: .95rem; }
   #hint.error { color: #d70015; }
   .actions { display: flex; gap: 10px; flex-wrap: wrap; }
   button {
@@ -68,42 +68,49 @@
     border: 1px solid light-dark(#d2d2d7, #3a3a3c);
     background: light-dark(#fff, #1c1c1e); color: inherit;
   }
-  .previews { flex: 1; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
-  .previews figure {
-    margin: 0; flex: 1; min-height: 0;
-    display: flex; flex-direction: column; gap: 6px;
-  }
-  .previews figcaption { font-size: .88rem; color: light-dark(#6e6e73, #98989d); }
+  .tip { margin-top: auto; font-size: .82rem; color: light-dark(#aeaeb2, #636366); }
   .warn { color: #b25000; font-weight: 600; }
-  .previews img {
-    flex: 1; min-height: 0; width: 100%; object-fit: contain;
-    border-radius: 10px; background: light-dark(#e9e9ec, #2c2c2e);
+
+  #viewer-pane { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+  .pane-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .tabs {
+    display: flex; gap: 4px; padding: 4px; border-radius: 11px;
+    background: light-dark(#e9e9ec, #2c2c2e);
   }
-  .placeholder {
-    flex: 1; min-height: 0; border: 2px dashed light-dark(#c7c7cc, #48484a);
-    border-radius: 10px; display: grid; place-items: center;
-    color: light-dark(#aeaeb2, #636366); font-size: .9rem;
+  .tab {
+    background: transparent; color: inherit; border: none;
+    padding: 6px 16px; border-radius: 8px; font-size: .9rem; cursor: pointer;
   }
-  #result-pane { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
-  .pane-head { display: flex; align-items: center; justify-content: space-between; }
-  .pane-head h2 { font-size: 1.05rem; margin: 0; }
+  .tab.active {
+    background: light-dark(#fff, #48484a);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .15);
+  }
   #download {
     font-size: .95rem; text-decoration: none; padding: 8px 18px;
     border-radius: 10px; background: #34c759; color: #fff;
   }
-  #pdf, #pdf-placeholder { flex: 1; min-height: 0; border-radius: 10px; }
-  #pdf { width: 100%; border: 1px solid light-dark(#d2d2d7, #3a3a3c); }
-  #pdf-placeholder {
-    border: 2px dashed light-dark(#c7c7cc, #48484a);
-    display: grid; place-items: center;
-    color: light-dark(#aeaeb2, #636366);
+  #viewer {
+    flex: 1; min-height: 0; position: relative; overflow: hidden;
+    border-radius: 10px; background: light-dark(#e9e9ec, #2c2c2e);
+    display: flex; align-items: center; justify-content: center;
+    touch-action: none;
+  }
+  #viewer.zoomed { cursor: grab; }
+  #viewer.dragging { cursor: grabbing; }
+  #view-img {
+    max-width: 100%; max-height: 100%; object-fit: contain;
+    user-select: none; -webkit-user-select: none; will-change: transform;
+  }
+  #view-placeholder {
+    color: light-dark(#aeaeb2, #636366); font-size: .95rem;
+    border: 2px dashed light-dark(#c7c7cc, #48484a); border-radius: 10px;
+    padding: 40px 60px;
   }
   @media (max-width: 900px) {
     body { overflow: auto; }
     main { display: flex; flex-direction: column; height: auto; }
-    .previews { flex-direction: row; }
-    .previews figure { min-height: 260px; }
-    #pdf, #pdf-placeholder { height: 70vh; flex: none; }
+    #viewer { height: 70vh; flex: none; }
+    .tip { margin-top: 0; }
   }
 </style>
 </head>
@@ -136,27 +143,22 @@
       <button id="btn-reset" class="ghost">重新开始</button>
     </div>
 
-    <div class="previews">
-      <figure id="fig-front">
-        <figcaption>正面扫描结果 <span id="warn-front" class="warn" hidden>⚠ 未识别到证件边缘，建议重扫</span></figcaption>
-        <img id="img-front" alt="正面扫描结果" hidden>
-        <div id="ph-front" class="placeholder">未扫描</div>
-      </figure>
-      <figure id="fig-back">
-        <figcaption>反面扫描结果 <span id="warn-back" class="warn" hidden>⚠ 未识别到证件边缘，建议重扫</span></figcaption>
-        <img id="img-back" alt="反面扫描结果" hidden>
-        <div id="ph-back" class="placeholder">未扫描</div>
-      </figure>
-    </div>
+    <p class="tip">预览区内：触摸板捏合或 Ctrl+滚轮缩放，缩放后可拖拽/双指平移，双击复位</p>
   </aside>
 
-  <section id="result-pane">
+  <section id="viewer-pane">
     <div class="pane-head">
-      <h2>复印件预览</h2>
+      <nav class="tabs">
+        <button class="tab" data-tab="front">正面扫描结果<span id="tabwarn-front" class="warn" hidden> ⚠</span></button>
+        <button class="tab" data-tab="back">反面扫描结果<span id="tabwarn-back" class="warn" hidden> ⚠</span></button>
+        <button class="tab" data-tab="composite">复印件预览</button>
+      </nav>
       <a id="download" href="/api/pdf" download hidden>下载 PDF</a>
     </div>
-    <embed id="pdf" type="application/pdf" hidden>
-    <div id="pdf-placeholder">正反面扫描完成后，这里会显示合成的 A4 复印件</div>
+    <div id="viewer">
+      <img id="view-img" alt="预览" draggable="false" hidden>
+      <div id="view-placeholder">未扫描</div>
+    </div>
   </section>
 </main>
 
@@ -166,7 +168,6 @@ const buttons = { front: $('btn-front'), back: $('btn-back') };
 let scanning = false;
 let deviceOk = false;
 let lastState = { front: null, back: null };
-let pdfShownTs = null;
 
 const IDLE_HINT = '把证件放在玻璃板上，点「扫描正面」';
 
@@ -174,6 +175,115 @@ function setHint(text, isError = false) {
   $('hint').textContent = text;
   $('hint').classList.toggle('error', isError);
 }
+
+/* ---------- Tab 与查看器 ---------- */
+
+const viewer = $('viewer');
+const viewImg = $('view-img');
+const view = { tab: 'front', scale: 1, tx: 0, ty: 0 };
+
+const TAB_SRC = {
+  front: (s) => s.front && `/api/preview/front?t=${s.front.ts}`,
+  back: (s) => s.back && `/api/preview/back?t=${s.back.ts}`,
+  composite: (s) => s.front && s.back && `/api/composite?t=${s.front.ts}-${s.back.ts}`,
+};
+const TAB_EMPTY = {
+  front: '正面还未扫描',
+  back: '反面还未扫描',
+  composite: '正反面都扫描完成后，这里会显示合成的 A4 复印件',
+};
+
+function applyTransform() {
+  viewImg.style.transform = `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`;
+  viewer.classList.toggle('zoomed', view.scale > 1);
+}
+
+function resetView() {
+  view.scale = 1; view.tx = 0; view.ty = 0;
+  applyTransform();
+}
+
+function showTab(tab) {
+  view.tab = tab;
+  for (const el of document.querySelectorAll('.tab')) {
+    el.classList.toggle('active', el.dataset.tab === tab);
+  }
+  refreshViewer();
+}
+
+function refreshViewer() {
+  const src = TAB_SRC[view.tab](lastState);
+  if (src) {
+    if (viewImg.dataset.src !== src) {
+      viewImg.dataset.src = src;
+      viewImg.src = src;
+      resetView();
+    }
+    viewImg.hidden = false;
+    $('view-placeholder').hidden = true;
+  } else {
+    viewImg.hidden = true;
+    viewImg.dataset.src = '';
+    $('view-placeholder').textContent = TAB_EMPTY[view.tab];
+    $('view-placeholder').hidden = false;
+    resetView();
+  }
+}
+
+/* 缩放：触摸板捏合在 macOS/Chrome 上映射为 ctrlKey 的 wheel 事件 */
+viewer.addEventListener('wheel', (e) => {
+  e.preventDefault(); // 阻止页面级缩放/回弹
+  if (viewImg.hidden) return;
+  const rect = viewer.getBoundingClientRect();
+  if (e.ctrlKey || e.metaKey) {
+    const cx = e.clientX - rect.left - rect.width / 2;
+    const cy = e.clientY - rect.top - rect.height / 2;
+    const next = Math.min(8, Math.max(1, view.scale * Math.exp(-e.deltaY * 0.01)));
+    const k = next / view.scale;
+    view.tx = cx - k * (cx - view.tx);
+    view.ty = cy - k * (cy - view.ty);
+    view.scale = next;
+    if (next === 1) { view.tx = 0; view.ty = 0; }
+    _clampPan(rect);
+    applyTransform();
+  } else if (view.scale > 1) {
+    view.tx -= e.deltaX;
+    view.ty -= e.deltaY;
+    _clampPan(rect);
+    applyTransform();
+  }
+}, { passive: false });
+
+function _clampPan(rect) {
+  const maxX = (rect.width * view.scale) / 2;
+  const maxY = (rect.height * view.scale) / 2;
+  view.tx = Math.min(maxX, Math.max(-maxX, view.tx));
+  view.ty = Math.min(maxY, Math.max(-maxY, view.ty));
+}
+
+let drag = null;
+viewer.addEventListener('pointerdown', (e) => {
+  if (view.scale <= 1 || viewImg.hidden) return;
+  drag = { x: e.clientX, y: e.clientY };
+  viewer.setPointerCapture(e.pointerId);
+  viewer.classList.add('dragging');
+});
+viewer.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  view.tx += e.clientX - drag.x;
+  view.ty += e.clientY - drag.y;
+  drag = { x: e.clientX, y: e.clientY };
+  _clampPan(viewer.getBoundingClientRect());
+  applyTransform();
+});
+const endDrag = () => { drag = null; viewer.classList.remove('dragging'); };
+viewer.addEventListener('pointerup', endDrag);
+viewer.addEventListener('pointercancel', endDrag);
+viewer.addEventListener('dblclick', resetView);
+document.querySelectorAll('.tab').forEach((el) =>
+  el.addEventListener('click', () => showTab(el.dataset.tab)));
+
+/* ---------- 状态渲染 ---------- */
 
 function renderDevice(info) {
   deviceOk = !!(info.device && info.available);
@@ -188,42 +298,28 @@ function render(state) {
   lastState = state;
   for (const side of ['front', 'back']) {
     const entry = state[side];
-    $('warn-' + side).hidden = !entry || entry.detected;
-    $('img-' + side).hidden = !entry;
-    $('ph-' + side).hidden = !!entry;
-    if (entry) {
-      $('img-' + side).src = `/api/preview/${side}?t=${entry.ts}`;
-      buttons[side].querySelector('.label').textContent = side === 'front' ? '重扫正面' : '重扫反面';
-    } else {
-      buttons[side].querySelector('.label').textContent = side === 'front' ? '扫描正面' : '扫描反面';
-    }
+    $('tabwarn-' + side).hidden = !entry || entry.detected;
+    buttons[side].querySelector('.label').textContent = entry
+      ? (side === 'front' ? '重扫正面' : '重扫反面')
+      : (side === 'front' ? '扫描正面' : '扫描反面');
   }
   buttons.front.disabled = scanning || !deviceOk;
   buttons.back.disabled = scanning || !deviceOk || !state.front;
 
   const done = state.front && state.back;
-  $('pdf').hidden = !done;
-  $('pdf-placeholder').hidden = !!done;
   $('download').hidden = !done;
   if (done) {
-    const ts = `${state.front.ts}-${state.back.ts}`;
-    if (pdfShownTs !== ts) {  // 内容没变就不重载 PDF
-      pdfShownTs = ts;
-      $('pdf').src = `/api/pdf?t=${Date.now()}`;
-    }
     const bad = !state.front.detected || !state.back.detected;
-    setHint(bad ? '已生成 PDF，但有一面未识别到证件边缘（用的是整幅原图），建议重扫那一面'
+    setHint(bad ? '已生成复印件，但有一面未识别到证件边缘（用的是整幅原图），建议重扫那一面'
                 : '完成！可以下载 PDF，也可以单面重扫');
+  } else if (!deviceOk) {
+    setHint('请先在上方选择一台可用的扫描仪');
+  } else if (state.front) {
+    setHint('请把证件翻面，再点「扫描反面」');
   } else {
-    pdfShownTs = null;
-    if (!deviceOk) {
-      setHint('请先在上方选择一台可用的扫描仪');
-    } else if (state.front) {
-      setHint('请把证件翻面，再点「扫描反面」');
-    } else {
-      setHint(IDLE_HINT);
-    }
+    setHint(IDLE_HINT);
   }
+  refreshViewer();
 }
 
 async function scan(side) {
@@ -240,6 +336,9 @@ async function scan(side) {
     }
     const state = await resp.json();
     scanning = false;
+    lastState = state;
+    // 扫完自动切到最新内容：两面齐备 → 复印件，否则刚扫的那面
+    showTab(state.front && state.back ? 'composite' : side);
     render(state);
   } catch (e) {
     const state = await fetchState();
@@ -304,7 +403,9 @@ buttons.front.addEventListener('click', () => scan('front'));
 buttons.back.addEventListener('click', () => scan('back'));
 $('btn-reset').addEventListener('click', async () => {
   if (scanning) return;
-  render(await (await fetch('/api/reset', { method: 'POST' })).json());
+  const state = await (await fetch('/api/reset', { method: 'POST' })).json();
+  showTab('front');
+  render(state);
 });
 $('btn-dev').addEventListener('click', openPicker);
 $('btn-refresh').addEventListener('click', openPicker);
@@ -318,7 +419,10 @@ $('btn-manual').addEventListener('click', () => {
 });
 
 (async () => {
-  render(await fetchState());
+  const state = await fetchState();
+  lastState = state;
+  showTab(state.front && state.back ? 'composite' : 'front');
+  render(state);
   try {
     const info = await (await fetch('/api/device')).json();
     renderDevice(info);

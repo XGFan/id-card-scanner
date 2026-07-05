@@ -37,8 +37,9 @@ def test_full_flow(client):
     assert resp.status_code == 200
     assert resp.json()["front"]["detected"] is True
 
-    # 只有一面时不能出 PDF
+    # 只有一面时不能出 PDF / 复印件预览
     assert client.get("/api/pdf").status_code == 409
+    assert client.get("/api/composite").status_code == 409
 
     assert client.post("/api/scan/back").status_code == 200
 
@@ -55,6 +56,11 @@ def test_full_flow(client):
     assert preview.status_code == 200
     assert preview.headers["content-type"] == "image/jpeg"
     assert preview.content.startswith(b"\xff\xd8")
+
+    composite = client.get("/api/composite")
+    assert composite.status_code == 200
+    assert composite.headers["content-type"] == "image/jpeg"
+    assert composite.content.startswith(b"\xff\xd8")
 
     assert client.post("/api/reset").json() == {"front": None, "back": None}
 

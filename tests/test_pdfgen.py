@@ -34,6 +34,11 @@ def test_oversized_fallback_scaled_to_fit():
     assert data.startswith(b"%PDF")
 
 
+def test_compose_canvas_is_a4_at_300dpi():
+    canvas = pdfgen.compose_canvas(_card(), _card(), 300)
+    assert canvas.size == (pdfgen.A4_W, pdfgen.A4_H)
+
+
 def test_canvas_uses_scan_background_color():
     bg = (238, 236, 230)
     data = pdfgen.compose_pdf(_card(), _card(), 300, bg_color=bg)

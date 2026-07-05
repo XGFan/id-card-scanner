@@ -173,6 +173,32 @@ async def preview(side: str) -> Response:
     )
 
 
+@app.get("/api/composite")
+async def composite() -> Response:
+    """复印件页的图片预览（与 PDF 同源画布），供前端 tab 内统一缩放查看。"""
+    entries = {side: _sides.get(side) for side in SIDES}
+    if not all(entries.values()):
+        raise HTTPException(409, "正反面都扫描完成后才能生成复印件预览")
+
+    def build() -> bytes:
+        front = Image.open(io.BytesIO(entries["front"]["jpeg"])).convert("RGB")
+        back = Image.open(io.BytesIO(entries["back"]["jpeg"])).convert("RGB")
+        canvas = pdfgen.compose_canvas(
+            front, back, config.SCAN_DPI, bg_color=entries["front"]["bg"]
+        )
+        canvas.thumbnail((1400, 1980), Image.LANCZOS)  # 降采样省传输
+        buf = io.BytesIO()
+        canvas.save(buf, "JPEG", quality=85)
+        return buf.getvalue()
+
+    data = await asyncio.to_thread(build)
+    return Response(
+        data,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @app.get("/api/pdf")
 async def pdf() -> Response:
     # 先取快照，避免生成期间并发 reset 清空 _sides 导致 KeyError
