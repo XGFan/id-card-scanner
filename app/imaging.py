@@ -29,6 +29,7 @@ class DetectResult:
     image: np.ndarray                 # BGR：检测成功为摆正后的证件图（含余量），失败为原图
     detected: bool
     bg_color: tuple[int, int, int]    # 扫描背景采样色（BGR 中位数），供复印件页做底色
+    quad: np.ndarray | None = None    # 检测到的证件边界四角（原始扫描图坐标，4×2），未检出为 None
 
 
 def detect_card(bgr: np.ndarray, dpi: int) -> DetectResult:
@@ -45,7 +46,10 @@ def detect_card(bgr: np.ndarray, dpi: int) -> DetectResult:
         if rect is not None:
             expanded = _expand(rect, margin=MARGIN_MM / 25.4 * dpi)
             return DetectResult(
-                _warp(bgr, expanded), True, _estimate_bg(bgr, expanded, dpi)
+                _warp(bgr, expanded),
+                True,
+                _estimate_bg(bgr, expanded, dpi),
+                quad=cv2.boxPoints(rect),
             )
     return DetectResult(bgr, False, _estimate_bg(bgr, None, dpi))
 

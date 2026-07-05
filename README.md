@@ -53,6 +53,7 @@ uv run python -m app
 | `POST` | `/api/device` | 选定设备（`{url, name, model?, location?}`）并持久化 |
 | `POST` | `/api/scan/{front\|back}` | 触发一次平板扫描并处理该面 |
 | `GET` | `/api/image/{front\|back}` | 该面处理后的证件图（JPEG） |
+| `GET` | `/api/preview/{front\|back}` | 该面原始扫描图 + 自动框选效果（页面主预览） |
 | `GET` | `/api/pdf` | 复印件页 PDF（两面齐备后可用，否则 409） |
 | `GET` | `/api/state` | 当前两面的状态 |
 | `POST` | `/api/reset` | 清空重来 |

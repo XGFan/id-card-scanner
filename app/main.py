@@ -100,12 +100,22 @@ async def scan(side: str) -> dict:
             raw = await escl.scan_jpeg(_device["url"], config.SCAN_DPI)
         except escl.ScanError as exc:
             raise HTTPException(502, str(exc)) from exc
-        jpeg, detected, bg = await asyncio.to_thread(_process, raw)
-        _sides[side] = {"jpeg": jpeg, "detected": detected, "bg": bg, "ts": time.time()}
+        jpeg, detected, bg, preview = await asyncio.to_thread(_process, raw)
+        _sides[side] = {
+            "jpeg": jpeg,
+            "preview": preview,
+            "detected": detected,
+            "bg": bg,
+            "ts": time.time(),
+        }
     return _state()
 
 
-def _process(raw_jpeg: bytes) -> tuple[bytes, bool, tuple[int, int, int]]:
+PREVIEW_W = 900  # 框选预览图宽度（原图 2550px 降采样，省传输）
+_BOX_COLOR = (89, 199, 52)  # BGR，同前端主题绿 #34c759
+
+
+def _process(raw_jpeg: bytes) -> tuple[bytes, bool, tuple[int, int, int], bytes]:
     array = np.frombuffer(raw_jpeg, dtype=np.uint8)
     bgr = cv2.imdecode(array, cv2.IMREAD_COLOR)
     if bgr is None:
@@ -115,7 +125,27 @@ def _process(raw_jpeg: bytes) -> tuple[bytes, bool, tuple[int, int, int]]:
     if not ok:
         raise HTTPException(500, "图像编码失败")
     b, g, r = result.bg_color  # OpenCV 是 BGR，Pillow 用 RGB
-    return encoded.tobytes(), result.detected, (r, g, b)
+    preview = _make_preview(bgr, result.quad)
+    return encoded.tobytes(), result.detected, (r, g, b), preview
+
+
+def _make_preview(bgr: np.ndarray, quad: np.ndarray | None) -> bytes:
+    """原始扫描图的框选预览：降采样 + 检测框外压暗 + 绿色边界框。"""
+    scale = PREVIEW_W / bgr.shape[1]
+    small = cv2.resize(
+        bgr, (PREVIEW_W, round(bgr.shape[0] * scale)), interpolation=cv2.INTER_AREA
+    )
+    if quad is not None:
+        pts = (quad * scale).astype(np.int32)
+        mask = np.zeros(small.shape[:2], np.uint8)
+        cv2.fillPoly(mask, [pts], 255)
+        dimmed = (small * 0.5).astype(np.uint8)
+        small = np.where(mask[..., None] == 255, small, dimmed)
+        cv2.polylines(small, [pts], True, _BOX_COLOR, 4, cv2.LINE_AA)
+    ok, buf = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    if not ok:
+        raise HTTPException(500, "预览编码失败")
+    return buf.tobytes()
 
 
 @app.get("/api/image/{side}")
@@ -125,6 +155,19 @@ async def image(side: str) -> Response:
         raise HTTPException(404, "这一面还没有扫描")
     return Response(
         entry["jpeg"],
+        media_type="image/jpeg",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.get("/api/preview/{side}")
+async def preview(side: str) -> Response:
+    """原始扫描图 + 自动框选效果，页面上的主预览。"""
+    entry = _sides.get(side)
+    if entry is None:
+        raise HTTPException(404, "这一面还没有扫描")
+    return Response(
+        entry["preview"],
         media_type="image/jpeg",
         headers={"Cache-Control": "no-store"},
     )

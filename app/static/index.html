@@ -8,26 +8,35 @@
 <style>
   :root { color-scheme: light dark; }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; } /* 防止 display:grid/flex 等作者样式压过 hidden */
+  html, body { height: 100%; }
   body {
-    margin: 0; padding: 24px 16px 48px;
+    margin: 0;
     font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
     background: light-dark(#f5f5f7, #1c1c1e); color: light-dark(#1d1d1f, #f5f5f7);
-    display: flex; justify-content: center;
+    overflow: hidden;
   }
-  main { width: 100%; max-width: 860px; }
-  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  main {
+    display: grid;
+    grid-template-columns: clamp(360px, 30vw, 560px) 1fr;
+    gap: 20px;
+    height: 100dvh;
+    padding: 20px;
+  }
+  aside { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+  h1 { font-size: 1.4rem; margin: 0; }
   #devbar {
     display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-    font-size: .92rem; color: light-dark(#6e6e73, #98989d); margin-bottom: 14px;
+    font-size: .9rem; color: light-dark(#6e6e73, #98989d);
   }
   #dev-dot { font-size: .7rem; }
   #dev-dot.ok { color: #34c759; }
   #dev-dot.bad { color: #d70015; }
-  #hint { margin: 0 0 20px; color: light-dark(#6e6e73, #98989d); min-height: 1.4em; }
+  #hint { margin: 0; color: light-dark(#6e6e73, #98989d); min-height: 1.4em; font-size: .95rem; }
   #hint.error { color: #d70015; }
-  .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; }
   button {
-    font-size: 1rem; padding: 10px 22px; border-radius: 10px; border: none;
+    font-size: .95rem; padding: 9px 18px; border-radius: 10px; border: none;
     background: #0071e3; color: #fff; cursor: pointer;
   }
   button:disabled { opacity: .45; cursor: not-allowed; }
@@ -42,82 +51,112 @@
   @keyframes spin { to { transform: rotate(360deg); } }
   #picker {
     border: 1px solid light-dark(#d2d2d7, #3a3a3c); border-radius: 12px;
-    padding: 14px 16px; margin-bottom: 20px; background: light-dark(#fff, #2c2c2e);
+    padding: 12px 14px; background: light-dark(#fff, #2c2c2e);
   }
-  #picker h2 { font-size: 1rem; margin: 0 0 10px; }
-  #dev-list { list-style: none; margin: 0 0 10px; padding: 0; }
+  #picker h2 { font-size: .95rem; margin: 0 0 8px; }
+  #dev-list { list-style: none; margin: 0 0 8px; padding: 0; }
   #dev-list li {
-    padding: 10px 12px; border-radius: 8px; cursor: pointer;
+    padding: 8px 10px; border-radius: 8px; cursor: pointer;
     display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap;
   }
   #dev-list li:hover { background: light-dark(#f0f0f2, #3a3a3c); }
-  #dev-list .model { color: light-dark(#6e6e73, #98989d); font-size: .85rem; }
-  #picker .status { color: light-dark(#6e6e73, #98989d); font-size: .9rem; }
-  #picker .manual { display: flex; gap: 8px; margin-top: 10px; }
+  #dev-list .model { color: light-dark(#6e6e73, #98989d); font-size: .82rem; }
+  #picker .status { color: light-dark(#6e6e73, #98989d); font-size: .85rem; margin: 0 0 8px; }
+  #picker .manual { display: flex; gap: 8px; margin-top: 8px; }
   #picker .manual input {
-    flex: 1; font-size: .9rem; padding: 6px 10px; border-radius: 8px;
+    flex: 1; font-size: .85rem; padding: 6px 10px; border-radius: 8px;
     border: 1px solid light-dark(#d2d2d7, #3a3a3c);
     background: light-dark(#fff, #1c1c1e); color: inherit;
   }
-  .thumbs { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
-  figure { margin: 0; width: 260px; }
-  figure img {
-    width: 100%; border-radius: 8px; border: 1px solid light-dark(#d2d2d7, #3a3a3c);
-    background: #fff;
+  .previews { flex: 1; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+  .previews figure {
+    margin: 0; flex: 1; min-height: 0;
+    display: flex; flex-direction: column; gap: 6px;
   }
-  figcaption { font-size: .9rem; margin-top: 6px; }
+  .previews figcaption { font-size: .88rem; color: light-dark(#6e6e73, #98989d); }
   .warn { color: #b25000; font-weight: 600; }
-  #result { margin-top: 8px; }
-  #pdf { width: 100%; height: 72vh; border: 1px solid light-dark(#d2d2d7, #3a3a3c); border-radius: 8px; }
+  .previews img {
+    flex: 1; min-height: 0; width: 100%; object-fit: contain;
+    border-radius: 10px; background: light-dark(#e9e9ec, #2c2c2e);
+  }
+  .placeholder {
+    flex: 1; min-height: 0; border: 2px dashed light-dark(#c7c7cc, #48484a);
+    border-radius: 10px; display: grid; place-items: center;
+    color: light-dark(#aeaeb2, #636366); font-size: .9rem;
+  }
+  #result-pane { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+  .pane-head { display: flex; align-items: center; justify-content: space-between; }
+  .pane-head h2 { font-size: 1.05rem; margin: 0; }
   #download {
-    display: inline-block; margin-top: 12px; font-size: 1rem; text-decoration: none;
-    padding: 10px 22px; border-radius: 10px; background: #34c759; color: #fff;
+    font-size: .95rem; text-decoration: none; padding: 8px 18px;
+    border-radius: 10px; background: #34c759; color: #fff;
+  }
+  #pdf, #pdf-placeholder { flex: 1; min-height: 0; border-radius: 10px; }
+  #pdf { width: 100%; border: 1px solid light-dark(#d2d2d7, #3a3a3c); }
+  #pdf-placeholder {
+    border: 2px dashed light-dark(#c7c7cc, #48484a);
+    display: grid; place-items: center;
+    color: light-dark(#aeaeb2, #636366);
+  }
+  @media (max-width: 900px) {
+    body { overflow: auto; }
+    main { display: flex; flex-direction: column; height: auto; }
+    .previews { flex-direction: row; }
+    .previews figure { min-height: 260px; }
+    #pdf, #pdf-placeholder { height: 70vh; flex: none; }
   }
 </style>
 </head>
 <body>
 <main>
-  <h1>证件扫描</h1>
-  <div id="devbar">
-    设备：<span id="dev-name">未选择</span>
-    <span id="dev-dot" class="bad">●</span>
-    <button id="btn-dev" class="ghost small">更换设备</button>
-  </div>
-
-  <section id="picker" hidden>
-    <h2>选择扫描仪</h2>
-    <ul id="dev-list"></ul>
-    <p class="status" id="picker-status"></p>
-    <button id="btn-refresh" class="ghost small">重新搜索</button>
-    <div class="manual">
-      <input id="dev-url" type="text" placeholder="或手动输入设备地址，如 http://192.168.1.100:8080">
-      <button id="btn-manual" class="ghost small">连接</button>
+  <aside>
+    <h1>证件扫描</h1>
+    <div id="devbar">
+      设备：<span id="dev-name">未选择</span>
+      <span id="dev-dot" class="bad">●</span>
+      <button id="btn-dev" class="ghost small">更换设备</button>
     </div>
-  </section>
 
-  <p id="hint"></p>
+    <section id="picker" hidden>
+      <h2>选择扫描仪</h2>
+      <ul id="dev-list"></ul>
+      <p class="status" id="picker-status"></p>
+      <button id="btn-refresh" class="ghost small">重新搜索</button>
+      <div class="manual">
+        <input id="dev-url" type="text" placeholder="或手动输入设备地址，如 http://192.168.1.100:8080">
+        <button id="btn-manual" class="ghost small">连接</button>
+      </div>
+    </section>
 
-  <div class="actions">
-    <button id="btn-front" disabled><span class="spinner"></span><span class="label">扫描正面</span></button>
-    <button id="btn-back" disabled><span class="spinner"></span><span class="label">扫描反面</span></button>
-    <button id="btn-reset" class="ghost">重新开始</button>
-  </div>
+    <p id="hint"></p>
 
-  <div class="thumbs">
-    <figure id="fig-front" hidden>
-      <img id="img-front" alt="正面">
-      <figcaption>正面 <span id="warn-front" class="warn" hidden>⚠ 未识别到证件边缘，建议重扫</span></figcaption>
-    </figure>
-    <figure id="fig-back" hidden>
-      <img id="img-back" alt="反面">
-      <figcaption>反面 <span id="warn-back" class="warn" hidden>⚠ 未识别到证件边缘，建议重扫</span></figcaption>
-    </figure>
-  </div>
+    <div class="actions">
+      <button id="btn-front" disabled><span class="spinner"></span><span class="label">扫描正面</span></button>
+      <button id="btn-back" disabled><span class="spinner"></span><span class="label">扫描反面</span></button>
+      <button id="btn-reset" class="ghost">重新开始</button>
+    </div>
 
-  <section id="result" hidden>
-    <embed id="pdf" type="application/pdf">
-    <br>
-    <a id="download" href="/api/pdf" download>下载 PDF</a>
+    <div class="previews">
+      <figure id="fig-front">
+        <figcaption>正面扫描结果 <span id="warn-front" class="warn" hidden>⚠ 未识别到证件边缘，建议重扫</span></figcaption>
+        <img id="img-front" alt="正面扫描结果" hidden>
+        <div id="ph-front" class="placeholder">未扫描</div>
+      </figure>
+      <figure id="fig-back">
+        <figcaption>反面扫描结果 <span id="warn-back" class="warn" hidden>⚠ 未识别到证件边缘，建议重扫</span></figcaption>
+        <img id="img-back" alt="反面扫描结果" hidden>
+        <div id="ph-back" class="placeholder">未扫描</div>
+      </figure>
+    </div>
+  </aside>
+
+  <section id="result-pane">
+    <div class="pane-head">
+      <h2>复印件预览</h2>
+      <a id="download" href="/api/pdf" download hidden>下载 PDF</a>
+    </div>
+    <embed id="pdf" type="application/pdf" hidden>
+    <div id="pdf-placeholder">正反面扫描完成后，这里会显示合成的 A4 复印件</div>
   </section>
 </main>
 
@@ -127,6 +166,7 @@ const buttons = { front: $('btn-front'), back: $('btn-back') };
 let scanning = false;
 let deviceOk = false;
 let lastState = { front: null, back: null };
+let pdfShownTs = null;
 
 const IDLE_HINT = '把证件放在玻璃板上，点「扫描正面」';
 
@@ -148,10 +188,11 @@ function render(state) {
   lastState = state;
   for (const side of ['front', 'back']) {
     const entry = state[side];
-    $('fig-' + side).hidden = !entry;
     $('warn-' + side).hidden = !entry || entry.detected;
+    $('img-' + side).hidden = !entry;
+    $('ph-' + side).hidden = !!entry;
     if (entry) {
-      $('img-' + side).src = `/api/image/${side}?t=${entry.ts}`;
+      $('img-' + side).src = `/api/preview/${side}?t=${entry.ts}`;
       buttons[side].querySelector('.label').textContent = side === 'front' ? '重扫正面' : '重扫反面';
     } else {
       buttons[side].querySelector('.label').textContent = side === 'front' ? '扫描正面' : '扫描反面';
@@ -161,18 +202,27 @@ function render(state) {
   buttons.back.disabled = scanning || !deviceOk || !state.front;
 
   const done = state.front && state.back;
-  $('result').hidden = !done;
+  $('pdf').hidden = !done;
+  $('pdf-placeholder').hidden = !!done;
+  $('download').hidden = !done;
   if (done) {
-    $('pdf').src = `/api/pdf?t=${Date.now()}`;
+    const ts = `${state.front.ts}-${state.back.ts}`;
+    if (pdfShownTs !== ts) {  // 内容没变就不重载 PDF
+      pdfShownTs = ts;
+      $('pdf').src = `/api/pdf?t=${Date.now()}`;
+    }
     const bad = !state.front.detected || !state.back.detected;
     setHint(bad ? '已生成 PDF，但有一面未识别到证件边缘（用的是整幅原图），建议重扫那一面'
                 : '完成！可以下载 PDF，也可以单面重扫');
-  } else if (!deviceOk) {
-    setHint('请先在上方选择一台可用的扫描仪');
-  } else if (state.front) {
-    setHint('请把证件翻面，再点「扫描反面」');
   } else {
-    setHint(IDLE_HINT);
+    pdfShownTs = null;
+    if (!deviceOk) {
+      setHint('请先在上方选择一台可用的扫描仪');
+    } else if (state.front) {
+      setHint('请把证件翻面，再点「扫描反面」');
+    } else {
+      setHint(IDLE_HINT);
+    }
   }
 }
 
@@ -213,7 +263,7 @@ async function openPicker() {
   try {
     const { devices } = await (await fetch('/api/devices/discover')).json();
     $('picker-status').textContent = devices.length
-      ? '点击选择：' : '没有找到设备。确认打印机开机且与本机同一网络后，点「重新搜索」。';
+      ? '点击选择：' : '没有找到设备。确认打印机开机且与本机同一网络，或在下方手动输入地址。';
     for (const dev of devices) {
       const li = document.createElement('li');
       const name = document.createElement('strong');

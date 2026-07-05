@@ -51,6 +51,11 @@ def test_full_flow(client):
     assert img.status_code == 200
     assert img.headers["content-type"] == "image/jpeg"
 
+    preview = client.get("/api/preview/front")
+    assert preview.status_code == 200
+    assert preview.headers["content-type"] == "image/jpeg"
+    assert preview.content.startswith(b"\xff\xd8")
+
     assert client.post("/api/reset").json() == {"front": None, "back": None}
 
 
@@ -64,6 +69,7 @@ def test_invalid_side_rejected(client):
 
 def test_image_404_before_scan(client):
     assert client.get("/api/image/front").status_code == 404
+    assert client.get("/api/preview/front").status_code == 404
 
 
 def test_scan_error_surfaces_as_502(client, monkeypatch):

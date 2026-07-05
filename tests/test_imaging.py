@@ -71,10 +71,26 @@ def test_square_card_at_45_degrees_not_distorted():
     assert abs(dims[1] - (800 + EXPAND)) <= 15
 
 
+def test_quad_matches_card_corners():
+    # 框选预览用：quad 应贴合证件在原图中的实际边界（紧框，不含余量）
+    center, angle = (1200, 1600), 10
+    img = _platen(BG)
+    _draw_card(img, center, angle, (140, 90, 60))
+    result = detect_card(img, DPI)
+    assert result.detected
+    assert result.quad is not None and result.quad.shape == (4, 2)
+    expected = cv2.boxPoints((center, (CARD_W, CARD_H), angle))
+    got = sorted(map(tuple, result.quad.round().astype(int)))
+    want = sorted(map(tuple, expected.round().astype(int)))
+    for (gx, gy), (wx, wy) in zip(got, want):
+        assert abs(gx - wx) <= 12 and abs(gy - wy) <= 12
+
+
 def test_blank_scan_returns_original_with_flag():
     img = _platen(BG)
     result = detect_card(img, DPI)
     assert not result.detected
+    assert result.quad is None
     assert result.image.shape == img.shape
     assert all(abs(c - BG) <= 4 for c in result.bg_color)
 
