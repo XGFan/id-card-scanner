@@ -107,6 +107,32 @@ def test_page_background_removes_card_and_fits_a4():
     assert patch.mean() > BG - 15
 
 
+def test_wide_card_margin_clamped_inside_platen():
+    # 回归：宽证件（≈A4 宽）时余量必须按边界收缩，
+    # 裁剪不得越界复制玻璃板边缘的白色校准带（复印件两侧白边的根因）
+    img = _platen(BG)
+    img[:, :30] = 255
+    img[:, -30:] = 255
+    box = cv2.boxPoints(((1275, 1600), (2400, 1500), 0.0)).astype(np.int32)
+    cv2.fillPoly(img, [box], (140, 90, 60))
+    result = detect_card(img, DPI)
+    assert result.detected
+    assert result.margin_mm < 3  # 距边界仅约 75px，12mm 余量被钳制
+    assert result.image.shape[1] < 2550  # 未越出原图
+    sides = np.concatenate(
+        [result.image[:, :5].ravel(), result.image[:, -5:].ravel()]
+    )
+    assert sides.max() < 250  # 两侧不含白色校准带
+
+
+def test_normal_card_keeps_full_margin():
+    # 居中放置的普通证件仍应获得完整 12mm 余量
+    img = _platen(BG)
+    _draw_card(img, (1200, 1600), 10, (140, 90, 60))
+    result = detect_card(img, DPI)
+    assert abs(result.margin_mm - 12.0) < 0.1
+
+
 def test_page_background_continues_vertical_band_through_hole():
     # 回归：卡片贴着纵向暗带时，填充必须让暗带竖向延续，
     # 而不是把暗色横向漫成云斑（Telea 扩散的问题）

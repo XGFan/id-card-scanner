@@ -23,6 +23,8 @@ MIN_SIDE_CM = 2.0       # 证件短边至少 2cm
 MIN_FILL_RATIO = 0.72   # 轮廓面积 / 最小外接旋转矩形面积，过滤非实心矩形
 MARGIN_MM = 12.0        # 裁剪余量：足够大，让卡片周围的反光光晕在余量内自然衰减
                         # 到平坦背景，接缝落在平坦区、配合宽羽化即不可见（迭代 9）
+EDGE_KEEPOUT_MM = 3.0   # 玻璃板边缘的白色校准带宽度：余量不得伸入该区域
+                        # （宽证件≈A4 宽时余量会顶到原图边界，白边即由此而来）
 
 
 @dataclass
@@ -31,6 +33,7 @@ class DetectResult:
     detected: bool
     bg_color: tuple[int, int, int]    # 扫描背景采样色（BGR 中位数），供复印件页做底色
     quad: np.ndarray | None = None    # 检测到的证件边界四角（原始扫描图坐标，4×2），未检出为 None
+    margin_mm: float = 0.0            # 本次裁剪实际使用的余量（证件贴边时会小于 MARGIN_MM）
 
 
 def detect_card(bgr: np.ndarray, dpi: int) -> DetectResult:
@@ -45,14 +48,34 @@ def detect_card(bgr: np.ndarray, dpi: int) -> DetectResult:
     for mask in _candidate_masks(blurred):
         rect = _best_rect(mask, min_area, max_area, min_side)
         if rect is not None:
-            expanded = _expand(rect, margin=MARGIN_MM / 25.4 * dpi)
+            margin = _clamp_margin(rect, bgr.shape, dpi)
+            expanded = _expand(rect, margin)
             return DetectResult(
                 _warp(bgr, expanded),
                 True,
                 _estimate_bg(bgr, expanded, dpi),
                 quad=cv2.boxPoints(rect),
+                margin_mm=margin / dpi * 25.4,
             )
     return DetectResult(bgr, False, _estimate_bg(bgr, None, dpi))
+
+
+def _clamp_margin(rect: cv2.typing.RotatedRect, shape: tuple, dpi: int) -> float:
+    """余量按证件到图像边界的距离收缩，且不伸入玻璃板边缘的白色校准带。
+
+    1.42 (≥√2) 是旋转矩形外扩时角点位移的轴向分量上界，保证外扩后仍在界内。
+    """
+    h, w = shape[:2]
+    box = cv2.boxPoints(rect)
+    dist = min(
+        float(box[:, 0].min()),
+        float(box[:, 1].min()),
+        float(w - 1 - box[:, 0].max()),
+        float(h - 1 - box[:, 1].max()),
+    )
+    keepout = EDGE_KEEPOUT_MM / 25.4 * dpi
+    allowed = max(0.0, (dist - keepout) / 1.42)
+    return min(MARGIN_MM / 25.4 * dpi, allowed)
 
 
 def _candidate_masks(blurred: np.ndarray) -> Iterator[np.ndarray]:

@@ -126,8 +126,16 @@ def _process(raw_jpeg: bytes) -> dict:
         "detected": result.detected,
         "bg": (r, g, b),
         "quad": result.quad,
+        "margin_mm": result.margin_mm,  # 实际余量：决定羽化宽度与保 1:1 可裁量
         "raw": raw_jpeg,  # 合成复印件页背景时要用（见 _page_background）
     }
+
+
+def _margins_px(entries: dict) -> tuple[int, int]:
+    return tuple(
+        round(entries[side]["margin_mm"] / 25.4 * pdfgen.CANVAS_DPI)
+        for side in SIDES
+    )
 
 
 def _page_background(entry: dict) -> Image.Image | None:
@@ -203,6 +211,7 @@ async def composite() -> Response:
             config.SCAN_DPI,
             bg_color=entries["front"]["bg"],
             background=_page_background(entries["front"]),
+            margins_px=_margins_px(entries),
         )
         canvas.thumbnail((1400, 1980), Image.LANCZOS)  # 降采样省传输
         buf = io.BytesIO()
@@ -233,6 +242,7 @@ async def pdf() -> Response:
             config.SCAN_DPI,
             bg_color=entries["front"]["bg"],
             background=_page_background(entries["front"]),
+            margins_px=_margins_px(entries),
         )
 
     data = await asyncio.to_thread(build)
