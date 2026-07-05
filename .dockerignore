@@ -1,0 +1,9 @@
+.venv
+.git
+.omc
+data
+tests
+.pytest_cache
+__pycache__
+*.pyc
+.playwright-cli

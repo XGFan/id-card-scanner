@@ -1,0 +1,55 @@
+when:
+  branch: master
+  event: push
+
+steps:
+  - name: test
+    image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+    commands:
+      - uv sync --frozen
+      - uv run pytest -q
+
+  - name: build
+    image: docker.test4x.com/xgfan/plugin-docker-buildx-check
+    settings:
+      repo: docker.test4x.com/xgfan/id-card-scanner
+      registry: docker.test4x.com
+      tags:
+        - "${CI_COMMIT_SHA:0:8}"
+        - latest
+      mtu: 1450
+      cache_from: docker.test4x.com/xgfan/id-card-scanner:cache
+      cache_to: docker.test4x.com/xgfan/id-card-scanner:cache
+      username:
+        from_secret: docker_username
+      password:
+        from_secret: docker_password
+
+  - name: deploy
+    image: bitnami/kubectl:latest
+    commands:
+      - echo "$KUBECONFIG_DATA" > /tmp/kubeconfig
+      - export KUBECONFIG=/tmp/kubeconfig
+      - kubectl set image deployment/id-card-scanner id-card-scanner=docker.test4x.com/xgfan/id-card-scanner:$(echo $CI_COMMIT_SHA | cut -c1-8) -n default
+      - rm -f /tmp/kubeconfig
+    environment:
+      KUBECONFIG_DATA:
+        from_secret: kubeconfig
+
+  - name: notify-success
+    image: docker.test4x.com/xgfan/plugin-bark
+    failure: ignore
+    settings:
+      token:
+        from_secret: bark_token
+      status: success
+
+  - name: notify-failure
+    image: docker.test4x.com/xgfan/plugin-bark
+    failure: ignore
+    settings:
+      token:
+        from_secret: bark_token
+      status: failure
+    when:
+      - status: [failure]
