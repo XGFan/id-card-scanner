@@ -100,14 +100,9 @@ async def scan(side: str) -> dict:
             raw = await escl.scan_jpeg(_device["url"], config.SCAN_DPI)
         except escl.ScanError as exc:
             raise HTTPException(502, str(exc)) from exc
-        jpeg, detected, bg, preview = await asyncio.to_thread(_process, raw)
-        _sides[side] = {
-            "jpeg": jpeg,
-            "preview": preview,
-            "detected": detected,
-            "bg": bg,
-            "ts": time.time(),
-        }
+        entry = await asyncio.to_thread(_process, raw)
+        entry["ts"] = time.time()
+        _sides[side] = entry
     return _state()
 
 
@@ -115,7 +110,7 @@ PREVIEW_W = 900  # 框选预览图宽度（原图 2550px 降采样，省传输�
 _BOX_COLOR = (89, 199, 52)  # BGR，同前端主题绿 #34c759
 
 
-def _process(raw_jpeg: bytes) -> tuple[bytes, bool, tuple[int, int, int], bytes]:
+def _process(raw_jpeg: bytes) -> dict:
     array = np.frombuffer(raw_jpeg, dtype=np.uint8)
     bgr = cv2.imdecode(array, cv2.IMREAD_COLOR)
     if bgr is None:
@@ -125,8 +120,27 @@ def _process(raw_jpeg: bytes) -> tuple[bytes, bool, tuple[int, int, int], bytes]
     if not ok:
         raise HTTPException(500, "图像编码失败")
     b, g, r = result.bg_color  # OpenCV 是 BGR，Pillow 用 RGB
-    preview = _make_preview(bgr, result.quad)
-    return encoded.tobytes(), result.detected, (r, g, b), preview
+    return {
+        "jpeg": encoded.tobytes(),
+        "preview": _make_preview(bgr, result.quad),
+        "detected": result.detected,
+        "bg": (r, g, b),
+        "quad": result.quad,
+        "raw": raw_jpeg,  # 合成复印件页背景时要用（见 _page_background）
+    }
+
+
+def _page_background(entry: dict) -> Image.Image | None:
+    """用正面原始扫描图生成复印件页的真实背景；检测失败时返回 None 走平色回退。"""
+    if entry.get("quad") is None:
+        return None
+    raw = cv2.imdecode(np.frombuffer(entry["raw"], np.uint8), cv2.IMREAD_COLOR)
+    if raw is None:
+        return None
+    bg_bgr = imaging.make_page_background(
+        raw, entry["quad"], config.SCAN_DPI, (pdfgen.A4_W, pdfgen.A4_H)
+    )
+    return Image.fromarray(cv2.cvtColor(bg_bgr, cv2.COLOR_BGR2RGB))
 
 
 def _make_preview(bgr: np.ndarray, quad: np.ndarray | None) -> bytes:
@@ -184,7 +198,11 @@ async def composite() -> Response:
         front = Image.open(io.BytesIO(entries["front"]["jpeg"])).convert("RGB")
         back = Image.open(io.BytesIO(entries["back"]["jpeg"])).convert("RGB")
         canvas = pdfgen.compose_canvas(
-            front, back, config.SCAN_DPI, bg_color=entries["front"]["bg"]
+            front,
+            back,
+            config.SCAN_DPI,
+            bg_color=entries["front"]["bg"],
+            background=_page_background(entries["front"]),
         )
         canvas.thumbnail((1400, 1980), Image.LANCZOS)  # 降采样省传输
         buf = io.BytesIO()
@@ -210,7 +228,11 @@ async def pdf() -> Response:
         front = Image.open(io.BytesIO(entries["front"]["jpeg"])).convert("RGB")
         back = Image.open(io.BytesIO(entries["back"]["jpeg"])).convert("RGB")
         return pdfgen.compose_pdf(
-            front, back, config.SCAN_DPI, bg_color=entries["front"]["bg"]
+            front,
+            back,
+            config.SCAN_DPI,
+            bg_color=entries["front"]["bg"],
+            background=_page_background(entries["front"]),
         )
 
     data = await asyncio.to_thread(build)

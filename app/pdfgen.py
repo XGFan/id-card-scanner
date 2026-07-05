@@ -27,9 +27,19 @@ def compose_canvas(
     back: Image.Image,
     scan_dpi: int,
     bg_color: tuple[int, int, int] = WHITE,
+    background: Image.Image | None = None,
 ) -> Image.Image:
-    """复印件页画布：PDF 与页面上的复印件预览共用同一渲染。"""
-    canvas = Image.new("RGB", (A4_W, A4_H), bg_color)
+    """复印件页画布：PDF 与页面上的复印件预览共用同一渲染。
+
+    background 是抹掉证件后的真实扫描背景（见 imaging.make_page_background）；
+    缺失时回退平色 bg_color。bg_color 同时用于旋转/缩放的填充色。
+    """
+    if background is not None:
+        canvas = background.convert("RGB")
+        if canvas.size != (A4_W, A4_H):
+            canvas = canvas.resize((A4_W, A4_H), Image.LANCZOS)
+    else:
+        canvas = Image.new("RGB", (A4_W, A4_H), bg_color)
     _place(canvas, front, scan_dpi, top=0, bg_color=bg_color)
     _place(canvas, back, scan_dpi, top=A4_H // 2, bg_color=bg_color)
     return canvas
@@ -40,9 +50,10 @@ def compose_pdf(
     back: Image.Image,
     scan_dpi: int,
     bg_color: tuple[int, int, int] = WHITE,
+    background: Image.Image | None = None,
 ) -> bytes:
     buf = io.BytesIO()
-    canvas = compose_canvas(front, back, scan_dpi, bg_color)
+    canvas = compose_canvas(front, back, scan_dpi, bg_color, background)
     canvas.save(buf, "PDF", resolution=float(CANVAS_DPI))
     return buf.getvalue()
 

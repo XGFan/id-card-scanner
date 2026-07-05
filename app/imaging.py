@@ -141,6 +141,63 @@ def _warp(bgr: np.ndarray, rect: cv2.typing.RotatedRect) -> np.ndarray:
     )
 
 
+INPAINT_PAD_MM = 8.0  # 抹除区域比检测框外扩的量：盖住裁剪余量与卡片周围的反光光晕
+
+
+def make_page_background(
+    bgr: np.ndarray, quad: np.ndarray, dpi: int, size: tuple[int, int]
+) -> np.ndarray:
+    """复印件页的真实背景：把原始扫描图上的证件区域 inpaint 抹掉，适配到页面尺寸。
+
+    平色画布与带真实光晕/纹理的裁剪余量放在一起必然露出拼接痕迹；
+    用同一次扫描的真实背景（含渐晕、噪点、光晕）做底，贴上去的裁剪
+    才像「两面一起放在玻璃板上复印了一次」。
+    """
+    h, w = bgr.shape[:2]
+    pad = INPAINT_PAD_MM / 25.4 * dpi
+    rect = cv2.minAreaRect(quad.astype(np.float32))
+    hole = cv2.boxPoints(_expand(rect, pad)).astype(np.int32)
+    mask = np.zeros((h, w), np.uint8)
+    cv2.fillPoly(mask, [hole], 255)
+
+    # 背景是低频内容：1/16 分辨率 inpaint + 强模糊。分辨率高了 Telea 会沿
+    # 等照度线扩散出 X 形方向性条纹；低分辨率 + 模糊得到平滑渐变填充
+    small = cv2.resize(bgr, (w // 16, h // 16), interpolation=cv2.INTER_AREA)
+    small_mask = cv2.resize(mask, (w // 16, h // 16), interpolation=cv2.INTER_NEAREST)
+    small_mask = cv2.dilate(small_mask, np.ones((3, 3), np.uint8))  # 盖住降采样边缘混色
+    filled = cv2.inpaint(small, small_mask, 4, cv2.INPAINT_TELEA)
+    filled = cv2.GaussianBlur(filled, (9, 9), 0)
+    filled_up = cv2.resize(filled, (w, h), interpolation=cv2.INTER_LINEAR)
+
+    # 羽化过渡：抹除区边界不留硬缝
+    alpha = (cv2.GaussianBlur(mask, (31, 31), 0).astype(np.float32) / 255)[..., None]
+    out = (bgr.astype(np.float32) * (1 - alpha) + filled_up.astype(np.float32) * alpha)
+    return _fit_to(out.astype(np.uint8), *size)
+
+
+def _fit_to(img: np.ndarray, target_w: int, target_h: int) -> np.ndarray:
+    """居中裁剪 / 边缘复制填充到目标尺寸（扫描幅面与 A4 画布略有差异）。"""
+    h, w = img.shape[:2]
+    if w >= target_w:
+        x0 = (w - target_w) // 2
+        img = img[:, x0 : x0 + target_w]
+    else:
+        left = (target_w - w) // 2
+        img = cv2.copyMakeBorder(
+            img, 0, 0, left, target_w - w - left, cv2.BORDER_REPLICATE
+        )
+    h, w = img.shape[:2]
+    if h >= target_h:
+        y0 = (h - target_h) // 2
+        img = img[y0 : y0 + target_h]
+    else:
+        top = (target_h - h) // 2
+        img = cv2.copyMakeBorder(
+            img, top, target_h - h - top, 0, 0, cv2.BORDER_REPLICATE
+        )
+    return img
+
+
 def _order_corners(pts: np.ndarray) -> tuple[np.ndarray, ...]:
     # 按质心极角排序（图像坐标系 y 向下，角度升序即视觉顺时针），
     # 再旋转使 x+y 最小的点为左上角。sum/diff 极值法在 45° 近正方形上会退化出重复角点。

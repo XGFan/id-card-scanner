@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 
-from app.imaging import detect_card
+from app.imaging import detect_card, make_page_background
 
 DPI = 300
 # 身份证 85.6×54mm @300dpi ≈ 1012×638px
@@ -93,6 +93,18 @@ def test_blank_scan_returns_original_with_flag():
     assert result.quad is None
     assert result.image.shape == img.shape
     assert all(abs(c - BG) <= 4 for c in result.bg_color)
+
+
+def test_page_background_removes_card_and_fits_a4():
+    img = _platen(BG)
+    _draw_card(img, (1200, 1600), 10, (140, 90, 60))
+    result = detect_card(img, DPI)
+    assert result.quad is not None
+    bg = make_page_background(img, result.quad, DPI, (2480, 3508))
+    assert bg.shape[:2] == (3508, 2480)
+    # 原卡片中心（x 因 2550→2480 居中裁剪左移 35px）应被填充回背景色，不再是深色
+    patch = bg[1550:1650, 1115:1215]
+    assert patch.mean() > BG - 15
 
 
 def test_ignores_object_larger_than_a5():
