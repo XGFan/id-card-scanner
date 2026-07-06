@@ -40,6 +40,24 @@ def test_detects_light_card_on_dark_background():
     assert abs(dims[1] - (CARD_W + EXPAND)) <= 15
 
 
+def test_detects_low_contrast_white_card_via_gradient_fill():
+    # 回归：白证件（交行 UnionPay 卡）放白盖板上，本体与背景仅差约 35 灰阶，
+    # Canny 轮廓围不成实心、Otsu 分不开背景——靠梯度幅值+闭合填洞兜底找回整卡。
+    img = _platen(250)
+    _draw_card(img, (1200, 1600), -3, (215, 215, 215))  # 低对比本体
+    # 内部图文提供梯度：照片、文字行、logo、芯片
+    cv2.rectangle(img, (760, 1420), (940, 1740), (70, 70, 70), -1)
+    for y in range(1460, 1740, 52):
+        cv2.rectangle(img, (1000, y), (1520, y + 20), (95, 95, 95), -1)
+    cv2.rectangle(img, (1380, 1330), (1600, 1420), (150, 60, 40), -1)
+    cv2.rectangle(img, (1560, 1560), (1660, 1660), (120, 140, 90), -1)
+    result = detect_card(img, DPI)
+    assert result.detected
+    dims = sorted(result.image.shape[:2])
+    assert abs(dims[0] - (CARD_H + EXPAND)) <= 15
+    assert abs(dims[1] - (CARD_W + EXPAND)) <= 15
+
+
 def test_margin_keeps_natural_background_around_card():
     # 余量带应保留扫描背景原色（不漂白、不删除）
     img = _platen(BG)

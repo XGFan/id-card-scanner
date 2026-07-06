@@ -21,6 +21,8 @@ MIN_CARD_CM2 = 6.0      # 小于 6cm² 的轮廓不可能是证件
 A5_CM2 = 14.8 * 21.0    # 证件面积上限：半张 A4（A5），另留 10% 容差
 MIN_SIDE_CM = 2.0       # 证件短边至少 2cm
 MIN_FILL_RATIO = 0.72   # 轮廓面积 / 最小外接旋转矩形面积，过滤非实心矩形
+GRAD_CLOSE_MM = 5.0     # 梯度兜底：闭合核尺寸（按 mm，随 DPI 缩放）。需足够大
+                        # 以桥接白底白卡时稀疏破碎的证件边缘，使填洞后连成整卡
 MARGIN_MM = 12.0        # 裁剪余量：足够大，让卡片周围的反光光晕在余量内自然衰减
                         # 到平坦背景，接缝落在平坦区、配合宽羽化即不可见（迭代 9）
 EDGE_KEEPOUT_MM = 3.0   # 玻璃板边缘的白色校准带宽度：余量不得伸入该区域
@@ -45,7 +47,7 @@ def detect_card(bgr: np.ndarray, dpi: int) -> DetectResult:
     gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    for mask in _candidate_masks(blurred):
+    for mask in _candidate_masks(blurred, dpi):
         rect = _best_rect(mask, min_area, max_area, min_side)
         if rect is not None:
             margin = _clamp_margin(rect, bgr.shape, dpi)
@@ -78,7 +80,7 @@ def _clamp_margin(rect: cv2.typing.RotatedRect, shape: tuple, dpi: int) -> float
     return min(MARGIN_MM / 25.4 * dpi, allowed)
 
 
-def _candidate_masks(blurred: np.ndarray) -> Iterator[np.ndarray]:
+def _candidate_masks(blurred: np.ndarray, dpi: int) -> Iterator[np.ndarray]:
     kernel = np.ones((5, 5), np.uint8)
     # 1) Canny：对白底白卡的弱边缘最敏感
     edges = cv2.Canny(blurred, 30, 120)
@@ -88,6 +90,31 @@ def _candidate_masks(blurred: np.ndarray) -> Iterator[np.ndarray]:
     closed = cv2.morphologyEx(otsu, cv2.MORPH_CLOSE, kernel, iterations=3)
     yield closed
     yield cv2.bitwise_not(closed)
+    # 3) 兜底：梯度幅值 + 闭合填洞。白底白卡放白盖板上边缘极弱，Canny 轮廓
+    #    围不成实心（fill 过低被拒）、Otsu 又分不开背景；但证件内部图文/logo/
+    #    芯片有丰富梯度，闭合桥接稀疏边缘后填洞，连同无梯度的白边与圆角一起
+    #    实心化为完整证件区域（交行 UnionPay 卡回归）。
+    yield _gradient_fill_mask(blurred, dpi)
+
+
+def _gradient_fill_mask(blurred: np.ndarray, dpi: int) -> np.ndarray:
+    gx = cv2.Scharr(blurred, cv2.CV_32F, 1, 0)
+    gy = cv2.Scharr(blurred, cv2.CV_32F, 0, 1)
+    mag = cv2.magnitude(gx, gy)
+    mag = (mag / (mag.max() + 1e-6) * 255).astype(np.uint8)  # 相对最强边缘归一
+    _, mask = cv2.threshold(mag, 15, 255, cv2.THRESH_BINARY)
+    k = int(round(GRAD_CLOSE_MM / 25.4 * dpi)) | 1  # 奇数核，随 DPI 缩放
+    closed = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((k, k), np.uint8), iterations=2)
+    return _fill_holes(closed)
+
+
+def _fill_holes(mask: np.ndarray) -> np.ndarray:
+    """从图像角点（必为背景）洪泛，取反并回填，把闭合边界内的空洞实心化。"""
+    h, w = mask.shape
+    flood = mask.copy()
+    ff = np.zeros((h + 2, w + 2), np.uint8)
+    cv2.floodFill(flood, ff, (0, 0), 255)
+    return mask | cv2.bitwise_not(flood)
 
 
 def _best_rect(
