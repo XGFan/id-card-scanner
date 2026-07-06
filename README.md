@@ -66,15 +66,14 @@ uv run pytest        # 单元测试（不需要打印机）
 
 ## 部署
 
-线上跑在私有 k3s 集群，域名 <https://scanner.example.com>，内外网访问都需要
-auth 登录。
+线上跑在私有 k3s 集群，集群入口统一认证，内外网访问都需要登录。对外域名不在
+本仓库公开。
 
-- **CI**：push master 触发 Woodpecker（ci.example.com）：pytest → buildx 构建推
+- **CI**：push master 触发 Woodpecker：pytest → buildx 构建推
   `docker.test4x.com/xgfan/id-card-scanner`（`sha8` + `latest`）→
   `kubectl set image` 滚动更新。见 `.woodpecker.yaml`。
-- **K8s 清单**（source-of-truth）：infra 仓库 `k8s/apps/id-card-scanner/`，
-  Deployment + Service + Ingress（挂 `default-auth` 中间件、不配 IP_BYPASS
-  即内外网都要登录）+ Longhorn PVC（挂 `/app/data` 持久化设备选择）。
+- **K8s 清单**（source-of-truth）在私有 infra 仓库：Deployment + Service +
+  Ingress（挂认证中间件、内外网都要登录）+ Longhorn PVC（挂 `/app/data` 持久化设备选择）。
 - **集群内没有 mDNS**：多播不跨 CNI 边界，「搜索设备」在线上会搜不到——初始设备
   由 Deployment 的 `PRINTER_URL`（打印机固定 IP）提供，页面上也可手动输入设备地址。
 - 时区 `TZ=Asia/Shanghai` 在镜像里设好（文件名时间戳用）。
