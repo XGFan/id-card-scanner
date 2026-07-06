@@ -193,6 +193,7 @@ def _warp(bgr: np.ndarray, rect: cv2.typing.RotatedRect) -> np.ndarray:
 
 
 INPAINT_PAD_MM = 8.0  # 抹除区域比检测框外扩的量：盖住裁剪余量与卡片周围的反光光晕
+_BLEND_BAND_ROWS = 512  # 羽化混合的分带高度：限制 float32 中间量的瞬时驻留（控内存峰值）
 
 
 def make_page_background(
@@ -221,10 +222,17 @@ def make_page_background(
     filled = cv2.GaussianBlur(filled, (5, 5), 0)
     filled_up = cv2.resize(filled, (w, h), interpolation=cv2.INTER_LINEAR)
 
-    # 羽化过渡：抹除区边界不留硬缝
-    alpha = (cv2.GaussianBlur(mask, (31, 31), 0).astype(np.float32) / 255)[..., None]
-    out = (bgr.astype(np.float32) * (1 - alpha) + filled_up.astype(np.float32) * alpha)
-    return _fit_to(out.astype(np.uint8), *size)
+    # 羽化过渡：抹除区边界不留硬缝。逐带做 alpha 混合——整幅 2550×3508 一次性
+    # float32 混合会瞬时驻留几百 MB 中间量，撑爆 512Mi 容器内存（扫完第二面自动
+    # 切复印件预览、触发本函数时 OOMKilled 的根因）。每像素独立，分带结果不变。
+    alpha = cv2.GaussianBlur(mask, (31, 31), 0)  # uint8 (h, w)，先整幅算好羽化再切带
+    out = np.empty_like(bgr)
+    for y0 in range(0, h, _BLEND_BAND_ROWS):
+        y1 = min(y0 + _BLEND_BAND_ROWS, h)
+        a = (alpha[y0:y1].astype(np.float32) / 255)[..., None]
+        band = bgr[y0:y1].astype(np.float32) * (1 - a) + filled_up[y0:y1].astype(np.float32) * a
+        out[y0:y1] = band.astype(np.uint8)
+    return _fit_to(out, *size)
 
 
 def _fill_columns(img: np.ndarray, mask: np.ndarray) -> np.ndarray:
